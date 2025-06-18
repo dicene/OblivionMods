@@ -136,7 +136,7 @@ local function HookBowAST()
     RegisterHook("Function /Game/Dev/StateMachine/AST_CharacterActionBowDrawShoot.AST_CharacterActionBowDrawShoot_C:Zoom", function(ast)
         ---@type UAST_CharacterActionBowDrawShoot_C
         local ast = ast:get()
-        local name = ast.PairedPawn:get():GetFName():ToString()
+        local name = ast.PairedPawn:Get():GetFName():ToString()
         -- ast:PerformBowAttack()
 
         if Config.Enabled then
@@ -163,7 +163,7 @@ local function HookBowAST()
     RegisterHook("Function /Game/Dev/StateMachine/AST_CharacterActionBowDrawShoot.AST_CharacterActionBowDrawShoot_C:StartAiming", function(ast)
         ---@type UAST_CharacterActionBowDrawShoot_C
         local ast = ast:get()
-        local name = ast.PairedPawn:get():GetFName():ToString()
+        local name = ast.PairedPawn:Get():GetFName():ToString()
         -- ast.DrawDuration = 0.2
         StartedAimingLookup[name] = true
         -- printf("Start Aiming: %s %s %0.2f", (ast.bReadyToShoot and "Ready" or "Not Ready"), ast.BowDrawInputHeldTime, ast.DrawDuration)
@@ -172,7 +172,7 @@ local function HookBowAST()
     RegisterHook("Function /Game/Dev/StateMachine/AST_CharacterActionBowDrawShoot.AST_CharacterActionBowDrawShoot_C:StopAiming", function(ast)
         ---@type UAST_CharacterActionBowDrawShoot_C
         local ast = ast:get()
-        local name = ast.PairedPawn:get():GetFName():ToString()
+        local name = ast.PairedPawn:Get():GetFName():ToString()
         -- ast.DrawDuration = 0.2
         -- StartedAimingLookup[name] = true
         -- printf("Stop Aiming: %s %s %0.2f", (ast.bReadyToShoot and "Ready" or "Not Ready"), ast.BowDrawInputHeldTime, ast.DrawDuration)
@@ -180,7 +180,7 @@ local function HookBowAST()
 
     RegisterHook("Function /Game/Dev/StateMachine/AST_CharacterActionBowDrawShoot.AST_CharacterActionBowDrawShoot_C:PerformBowAttack", function(ast)
         local ast = ast:get() ---@type UAST_CharacterActionBowDrawShoot_C
-        local name = ast.PairedPawn:get():GetFName():ToString()
+        local name = ast.PairedPawn:Get():GetFName():ToString()
         local heldTime = ast.BowDrawInputHeldTime
         local duration = ast.DrawDuration
         local ratio = heldTime >= duration and 1 or heldTime / duration
