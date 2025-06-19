@@ -15,7 +15,10 @@ https://github.com/user-attachments/assets/a2dca44b-8caf-49a8-907e-1bdd82c3088a
 
 https://github.com/user-attachments/assets/eca5881d-5b0d-4e6d-a53d-57c140b77239
 
+## AutoHarvest (Pure Lua approach)
+This mod automatically harvest any harvestable plants within a set distance of the Player. It only uses Lua, and makes use of the Console Command `"<RefId>".Activate Player` to pick flora in a way that functions identically to how manually harvesting works, without needing to add scripts to plants.
 
+https://github.com/user-attachments/assets/cf074a25-3ca3-42ee-9eb9-e7f9e1560a30
 
 
 Feel free to take/adapt mostly as you see fit, just don't sell it as your own or closed-source it.
