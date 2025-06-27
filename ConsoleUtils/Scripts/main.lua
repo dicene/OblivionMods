@@ -1,232 +1,39 @@
 local UEHelpers = require("UEHelpers")
-local ConsoleUtils = {}
+local ConsoleUtils = require("ConsoleUtils")
 
-local PrintDebugInfo = false
-local IncludeTestingKeybinds = true
-
-local printf = function(s,...) if PrintDebugInfo then if not s:match("\n$") then s = "[ConsoleUtils] " .. s .. "\n" end return print(s:format(...)) end end
+local printf = function(s,...) if not s:match("\n$") then s = "[ConsoleUtils] " .. s .. "\n" end return print(s:format(...)) end
 
 printf("Loading...")
 
-local ConsoleInstance = CreateInvalidObject()
-local LastConsoleCount = 0
-local CommandQueue = {}
-local ConsoleCommandCallbacks = {}
+RegisterKeyBind(Key.K, {ModifierKey.CONTROL}, function()
+    local pairedPawns = FindAllOf("BP_Generic_NPC_C") or {} ---@type TArray<ABP_Generic_NPC_C>
+    for i, pawn in ipairs(pairedPawns) do
+        if pawn:IsValid() and pawn:GetFullName():match("Persistent") then
+            if pawn.TESRefComponent:IsValid() then
+                local pawnID = pawn.TESRefComponent.FormIDInstance
+                local pawnName = pawn.ActorValuesPairingComponent.ObjectRefComponent.TESForm.FullName:ToString() or "UnknownName"
 
-local function ExecuteConsoleCommand(command)
-    local playerController = UEHelpers.GetPlayerController() or CreateInvalidObject() ---@cast playerController APlayerController
-    local kismetSystemLibrary = StaticFindObject('/Script/Engine.Default__KismetSystemLibrary') ---@cast kismetSystemLibrary UKismetSystemLibrary
+                ConsoleUtils.ExecuteConsoleCommandWithCallback(string.format('"%x".IsInCombat', pawnID), function (results)
+                    if results[1]:match("is not in combat") then
+                        print(string.format("%s IS NOT in combat.\n", pawnName))
+                    else
+                        print(string.format("%s IS in combat.\n", pawnName))
+                    end
+                end)
 
-    if not playerController:IsValid() or kismetSystemLibrary == nil then return end
-
-    local success, error = pcall(function ()
-        kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController)
-    end)
-
-    if not success then
-        kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController, false)
-    end
-end
-
-PropertyTypes.ArrayProperty.Size = 0x10
-
-RegisterCustomProperty({
-    ["Name"] = "OutputBuffer",
-    ["Type"] = PropertyTypes.ArrayProperty,
-    ["BelongsToClass"] = "/Script/Engine.Console",
-    ["OffsetInternal"] = 0x50,
-    ["ArrayProperty"] = {
-        ["Type"] = PropertyTypes.StrProperty
-    }
-})
-
-RegisterCustomProperty({
-    ["Name"] = "OutputBufferSize",
-    ["Type"] = PropertyTypes.IntProperty,
-    ["BelongsToClass"] = "/Script/Engine.Console",
-    ["OffsetInternal"] = 0x58
-})
-
-RegisterCustomProperty({
-    ["Name"] = "OutputBufferCurrentMaxSize",
-    ["Type"] = PropertyTypes.IntProperty,
-    ["BelongsToClass"] = "/Script/Engine.Console",
-    ["OffsetInternal"] = 0x5C
-})
-
-RegisterCustomProperty({
-    ["Name"] = "OutputBufferBottomElement",
-    ["Type"] = PropertyTypes.IntProperty,
-    ["BelongsToClass"] = "/Script/Engine.Console",
-    ["OffsetInternal"] = 0x60
-})
-
-local function OnConsoleBlockCompleted(command, result)
-    printf("Command: (%s), Result: (%s)", command, result)
-    if command:match("ID:%d+") then
-        local id = command:match("ID:(%d+)")
-
-        if ConsoleCommandCallbacks[id] then
-            ConsoleCommandCallbacks[id](result)
-            ConsoleCommandCallbacks[id] = nil
+                ConsoleUtils.ExecuteConsoleCommandWithCallback(string.format('"%x".GetBarterGold', pawnID), function (results)
+                    local barterGold = results[1]:match("has (%d+) barter gold currently")
+                    print(string.format("%s has %s barter gold.\n", pawnName, barterGold))
+                end)
+            end
         end
     end
-end
-
-RegisterConsoleCommandHandler("LogToConsole", function (command, parameters, outputDevice)
-    local text = command:match("LogToConsole (.+)")
-    if text then
-        printf("LogToConsole: %s", text)
-        outputDevice:Log(text)
-    end
-    return true
 end)
 
-local function UpdateConsoleEntries()
-    if not ConsoleInstance:IsValid() then
-        ConsoleInstance = FindFirstOf("Console") or CreateInvalidObject()
-        printf("Found instance of Console. 0x%x", ConsoleInstance:GetAddress())
-    end
-
-    if not ConsoleInstance:IsValid() then return end
-
-    local newConsoleCount = ConsoleInstance.OutputBufferSize
-
-    if LastConsoleCount > 0 and newConsoleCount > LastConsoleCount then
-        local newConsoleEntries = {}
-        printf("New console entries: %s", newConsoleCount - LastConsoleCount)
-
-        for i = LastConsoleCount, newConsoleCount - 1 do
-            local text = ConsoleInstance.OutputBuffer[i+1]:ToString()
-
-            if string.len(text) > 0 then
-                table.insert(newConsoleEntries, text)
-            end
-            printf("Console entry %s: (%s)", i, ConsoleInstance.OutputBuffer[i+1]:ToString())
-        end
-
-        local currentBlock = nil
-        local blockContents = {}
-        local gagLines = false
-
-        for i = 1, #newConsoleEntries do
-            local text = newConsoleEntries[i]
-            -- printf("Line %s: %s", i, text)
-
-            if currentBlock == nil and text:match("GameSetting Start {.+} >> NOT FOUND") then
-                currentBlock = text:match("GameSetting Start {.+} >> NOT FOUND")
-            elseif currentBlock ~= nil then
-                if text:match("GameSetting End >> NOT FOUND") then
-                    OnConsoleBlockCompleted(currentBlock, blockContents)
-                    -- OnConsoleBlockCompleted(currentBlock, table.concat(blockContents, ", "))
-                    gagLines = true
-                    blockContents = {}
-                    currentBlock = nil
-                else
-                    table.insert(blockContents, text)
-                end
-            end
-        end
-
-        if gagLines then
-            printf("Size: %s, BottomElement: %s", ConsoleInstance.OutputBufferSize, ConsoleInstance.OutputBufferBottomElement)
-            ConsoleInstance.OutputBufferSize = ConsoleInstance.OutputBufferSize - #newConsoleEntries
-            ConsoleInstance.OutputBufferBottomElement = ConsoleInstance.OutputBufferBottomElement - #newConsoleEntries
-            printf("Size: %s, BottomElement: %s", ConsoleInstance.OutputBufferSize, ConsoleInstance.OutputBufferBottomElement)
-        end
-    end
-
-    LastConsoleCount = newConsoleCount
-end
-
-local function TickFunc(player)
-    if #CommandQueue > 0 then
-        for i, command in ipairs(CommandQueue) do
-            LastCommand = command
-            printf("Executing command (%s)", command)
-            ExecuteConsoleCommand(command)
-        end
-
-        CommandQueue = {}
-
-        -- Alternate method of processing one command per tick
-        -- local commandRan = false
-        -- for i, command in ipairs(CommandQueue) do
-        --     if not commandRan then
-        --         LastCommand = command
-        --         ExecuteConsoleCommand(command)
-        --         commandRan = true
-        --     end
-        -- end
-        -- table.remove(CommandQueue, 1)
-    end
-
-    UpdateConsoleEntries()
-end
-
-function ConsoleUtils.ExecuteConsoleCommand(command)
-    table.insert(CommandQueue, command)
-end
-
-function ConsoleUtils.ExecuteConsoleCommandWithCallback(command, callback)
-    local randomID = math.random(999999999)
-    table.insert(CommandQueue, string.format('GetGS "Start {ID:%s}"', randomID))
-    table.insert(CommandQueue, command)
-    table.insert(CommandQueue, 'GetGS "End"')
-    -- printf("Setting up callback for ID:%s", randomID)
-    ConsoleCommandCallbacks[tostring(randomID)] = callback
-end
-
-function ConsoleUtils.LogToConsole(text)
-    ConsoleUtils.ExecuteConsoleCommand("LogToConsole " .. text)
-end
-
-if IncludeTestingKeybinds then
-    RegisterKeyBind(Key.K, {ModifierKey.CONTROL}, function()
-        local pairedPawns = FindAllOf("BP_Generic_NPC_C") or {} ---@type TArray<ABP_Generic_NPC_C>
-        for i, pawn in ipairs(pairedPawns) do
-            if pawn:IsValid() and pawn:GetFullName():match("Persistent") then
-                if pawn.TESRefComponent:IsValid() then
-                    local pawnID = pawn.TESRefComponent.FormIDInstance
-                    local pawnName = pawn.ActorValuesPairingComponent.ObjectRefComponent.TESForm.FullName:ToString() or "UnknownName"
-
-                    ConsoleUtils.ExecuteConsoleCommandWithCallback(string.format('"%x".IsInCombat', pawnID), function (results)
-                        if results[1]:match("is not in combat") then
-                            print(string.format("%s IS NOT in combat.\n", pawnName))
-                        else
-                            print(string.format("%s IS in combat.\n", pawnName))
-                        end
-                    end)
-
-                    ConsoleUtils.ExecuteConsoleCommandWithCallback(string.format('"%x".GetBarterGold', pawnID), function (results)
-                        local barterGold = results[1]:match("has (%d+) barter gold currently")
-                        print(string.format("%s has %s barter gold.\n", pawnName, barterGold))
-                    end)
-                end
-            end
-        end
-    end)
-
-    RegisterKeyBind(Key.L, {ModifierKey.CONTROL}, function()
-        printf("Attempting to log directly to console...")
-        -- ConsoleUtils.ExecuteConsoleCommand("LogToConsole Logging this text directly to the console.")
-        ConsoleUtils.LogToConsole("Logging this text directly to the console.")
-    end)
-end
-
-local pc = FindFirstOf("BP_OblivionPlayerCharacter_C") or CreateInvalidObject()
-if pc:IsValid() then
-    RegisterHook("Function /Game/Dev/PlayerBlueprints/BP_OblivionPlayerCharacter.BP_OblivionPlayerCharacter_C:ReceiveTick", function (player)
-        TickFunc(player)
-    end)
-else
-    NotifyOnNewObject("/Script/Altar.VOblivionPlayerCharacter", function()
-        RegisterHook("Function /Game/Dev/PlayerBlueprints/BP_OblivionPlayerCharacter.BP_OblivionPlayerCharacter_C:ReceiveTick", function (player)
-            TickFunc(player)
-        end)
-    end)
-end
+RegisterKeyBind(Key.L, {ModifierKey.CONTROL}, function()
+    printf("Attempting to log directly to console...")
+    -- ConsoleUtils.ExecuteConsoleCommand("LogToConsole Logging this text directly to the console.")
+    ConsoleUtils.LogToConsole("Logging this text directly to the console.")
+end)
 
 printf("Load complete!")
-
-return ConsoleUtils
