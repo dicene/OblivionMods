@@ -18,12 +18,15 @@ local function ExecuteConsoleCommand(command)
 
     if not playerController:IsValid() or kismetSystemLibrary == nil then return end
 
+    printf("Executing command (%s)", command)
     local success, error = pcall(function ()
-        kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController)
+        -- kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController)
+        kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController, false)
     end)
 
     if not success then
-        kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController, false)
+        -- kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController, false)
+        kismetSystemLibrary:ExecuteConsoleCommand(playerController.player, command, playerController)
     end
 end
 
@@ -60,14 +63,23 @@ RegisterCustomProperty({
     ["OffsetInternal"] = 0x60
 })
 
+RegisterCustomProperty({
+    ["Name"] = "ConsoleOpenMode",
+    ["Type"] = PropertyTypes.IntProperty,
+    ["BelongsToClass"] = "/Script/Engine.Console",
+    ["OffsetInternal"] = 0xD8
+})
+
 local function OnConsoleBlockCompleted(command, result)
-    printf("Command: (%s), Result: (%s)", command, result)
+    printf("OnConsoleBlockCompleted: Command: (%s), Result: (%s)", command, result)
     if command:match("ID:%d+") then
         local id = command:match("ID:(%d+)")
 
         if ConsoleCommandCallbacks[id] then
             ConsoleCommandCallbacks[id](result)
             ConsoleCommandCallbacks[id] = nil
+        else
+            printf("No callback for %s", id)
         end
     end
 end
@@ -101,7 +113,7 @@ local function UpdateConsoleEntries()
             if string.len(text) > 0 then
                 table.insert(newConsoleEntries, text)
             end
-            printf("Console entry %s: (%s)", i, ConsoleInstance.OutputBuffer[i+1]:ToString())
+            -- printf("Console entry %s: (%s)", i, ConsoleInstance.OutputBuffer[i+1]:ToString())
         end
 
         local currentBlock = nil
@@ -135,7 +147,7 @@ local function UpdateConsoleEntries()
         end
     end
 
-    LastConsoleCount = newConsoleCount
+    LastConsoleCount = ConsoleInstance.OutputBufferSize
 end
 
 local function TickFunc(player)
@@ -163,6 +175,61 @@ local function TickFunc(player)
     UpdateConsoleEntries()
 end
 
+function ConsoleUtils.IsConsoleOpen()
+    if not ConsoleInstance:IsValid() then
+        ConsoleInstance = FindFirstOf("Console") or CreateInvalidObject()
+        printf("Found instance of Console. 0x%x", ConsoleInstance:GetAddress())
+    end
+
+    if not ConsoleInstance:IsValid() then return false end
+
+    return ConsoleInstance.ConsoleOpenMode > 0
+end
+
+function ConsoleUtils.IsFullConsoleOpen()
+    if not ConsoleInstance:IsValid() then
+        ConsoleInstance = FindFirstOf("Console") or CreateInvalidObject()
+        printf("Found instance of Console. 0x%x", ConsoleInstance:GetAddress())
+    end
+
+    if not ConsoleInstance:IsValid() then return false end
+
+    return ConsoleInstance.ConsoleOpenMode == 0x8B2E
+end
+
+function ConsoleUtils.IsMiniConsoleOpen()
+    if not ConsoleInstance:IsValid() then
+        ConsoleInstance = FindFirstOf("Console") or CreateInvalidObject()
+        printf("Found instance of Console. 0x%x", ConsoleInstance:GetAddress())
+    end
+
+    if not ConsoleInstance:IsValid() then return false end
+
+    return ConsoleInstance.ConsoleOpenMode == 0x8B2A
+end
+
+function ConsoleUtils.OpenFullConsole()
+    if not ConsoleInstance:IsValid() then
+        ConsoleInstance = FindFirstOf("Console") or CreateInvalidObject()
+        printf("Found instance of Console. 0x%x", ConsoleInstance:GetAddress())
+    end
+
+    if not ConsoleInstance:IsValid() then return end
+
+    ConsoleInstance.ConsoleOpenMode = 0x8B2E
+end
+
+function ConsoleUtils.OpenMiniConsole()
+    if not ConsoleInstance:IsValid() then
+        ConsoleInstance = FindFirstOf("Console") or CreateInvalidObject()
+        printf("Found instance of Console. 0x%x", ConsoleInstance:GetAddress())
+    end
+
+    if not ConsoleInstance:IsValid() then return end
+
+    ConsoleInstance.ConsoleOpenMode = 0x8B2A
+end
+
 function ConsoleUtils.ExecuteConsoleCommand(command)
     table.insert(CommandQueue, command)
 end
@@ -172,6 +239,7 @@ function ConsoleUtils.ExecuteConsoleCommandWithCallback(command, callback)
     table.insert(CommandQueue, string.format('GetGS "Start {ID:%s}"', randomID))
     table.insert(CommandQueue, command)
     table.insert(CommandQueue, 'GetGS "End"')
+    printf("Setting up callback for %s", randomID)
     ConsoleCommandCallbacks[tostring(randomID)] = callback
 end
 
